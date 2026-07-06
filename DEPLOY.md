@@ -63,24 +63,30 @@ You now have five values to plug into the host in Part 2:
 
 ## Part 2 — Deploy the app
 
-Pick **one** host below. All three read the same repo and just need the
-environment variables from Part 1.
+**Recommended: Render (Option A).** This repo ships a `render.yaml` blueprint, so
+Render just asks you to fill in your five secrets in a form — nothing else to
+configure. Railway and Fly.io are here too if you prefer them.
 
-### Option A — Render (simplest dashboard)
+### Option A — Render (recommended, easiest)
 
-1. Push this repo to your own GitHub account (or fork it).
-2. Sign in to [Render](https://render.com) → **New → Web Service** → connect the
-   repo.
-3. Settings:
-   - **Runtime:** Node
-   - **Build command:** `npm install`
-   - **Start command:** `npm start`
-   - **Instance type:** the cheapest paid tier is fine; the free tier also works
-     but sleeps when idle (first visit after a nap is slow). **No disk needed.**
-4. Under **Environment**, add each variable from Part 1
-   (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`,
-   `ADMIN_KEY`, and optionally `MAX_FILE_MB`).
-5. Deploy. Render gives you a URL like `https://your-site.onrender.com`.
+This repo includes a `render.yaml` blueprint, so Render sets up the service for
+you and only asks for your secret values.
+
+1. Push this repo to your own GitHub account (or fork it), and make sure the
+   branch with `render.yaml` is your **default branch** (usually `main`).
+2. Deploy one of two ways:
+   - **Button:** click **Deploy to Render** in the README, or
+   - **Manually:** [Render](https://render.com) → **New → Blueprint** → connect
+     your repo. Render detects `render.yaml` automatically.
+3. Render shows a form for the values from Part 1 — paste them in:
+   `ADMIN_KEY`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`,
+   `R2_BUCKET`. (`MAX_FILE_MB` is preset to 500.)
+4. Click **Apply / Create**. Render builds and gives you a URL like
+   `https://remembrance-place.onrender.com`. **No disk to configure.**
+
+> The blueprint uses Render's **free** plan, which sleeps after ~15 min idle
+> (the first visit after a nap takes ~30s to wake). To keep it always-on, change
+> `plan: free` to `plan: starter` in `render.yaml` (a few dollars a month).
 
 ### Option B — Railway
 
