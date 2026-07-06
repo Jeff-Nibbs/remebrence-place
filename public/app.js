@@ -11,12 +11,14 @@ const progressFill = document.getElementById('progress-fill');
 const progressText = document.getElementById('progress-text');
 
 let selectedFiles = [];
+let maxFileMb = 500;
 
 // ---- Site config ----
 
 fetch('/api/config')
   .then((r) => r.json())
   .then((config) => {
+    if (config.maxFileMb) maxFileMb = config.maxFileMb;
     const set = (id, value) => {
       const el = document.getElementById(id);
       if (el && value) el.textContent = value;
@@ -118,62 +120,101 @@ function setStatus(message, kind) {
   formStatus.className = 'form-status' + (kind ? ' ' + kind : '');
 }
 
-form.addEventListener('submit', (e) => {
+// PUT one file to its upload URL, reporting bytes uploaded so far.
+function putFile(file, url, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', url);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    xhr.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable) onProgress(event.loaded);
+    });
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error('Upload failed'));
+    });
+    xhr.addEventListener('error', () => reject(new Error('Upload failed')));
+    xhr.send(file);
+  });
+}
+
+form.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (selectedFiles.length === 0) return;
 
-  const formData = new FormData();
-  formData.append('name', document.getElementById('uploader-name').value);
-  formData.append('message', document.getElementById('uploader-message').value);
-  selectedFiles.forEach((file) => formData.append('files', file));
+  const files = selectedFiles.slice();
+  const oversize = files.find((f) => f.size > maxFileMb * 1024 * 1024);
+  if (oversize) {
+    setStatus(`"${oversize.name}" is too large. The limit is ${maxFileMb} MB per file.`, 'error');
+    return;
+  }
+
+  const uploaderName = document.getElementById('uploader-name').value;
+  const message = document.getElementById('uploader-message').value;
 
   submitBtn.disabled = true;
   progressWrap.hidden = false;
+  progressFill.style.width = '0%';
   setStatus('');
 
-  const xhr = new XMLHttpRequest();
-  xhr.open('POST', '/api/upload');
+  const totalBytes = files.reduce((sum, f) => sum + f.size, 0) || 1;
+  let uploadedBefore = 0;
+  const showProgress = (currentLoaded) => {
+    const pct = Math.min(99, Math.round(((uploadedBefore + currentLoaded) / totalBytes) * 100));
+    progressFill.style.width = pct + '%';
+    progressText.textContent = `Uploading… ${pct}%`;
+  };
 
-  xhr.upload.addEventListener('progress', (event) => {
-    if (event.lengthComputable) {
-      const pct = Math.round((event.loaded / event.total) * 100);
-      progressFill.style.width = pct + '%';
-      progressText.textContent = pct < 100 ? `Uploading… ${pct}%` : 'Finishing up…';
+  try {
+    // Step 1: ask the server for upload URLs.
+    const presignRes = await fetch('/api/presign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        files: files.map((f) => ({ name: f.name, type: f.type, size: f.size }))
+      })
+    });
+    if (!presignRes.ok) throw new Error((await presignRes.json().catch(() => ({}))).error || 'Could not start the upload.');
+    const { files: targets } = await presignRes.json();
+
+    // Step 2: upload each file straight to storage.
+    const items = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const target = targets[i];
+      await putFile(file, target.url, showProgress);
+      uploadedBefore += file.size;
+      items.push({ key: target.key, originalName: file.name, type: file.type, size: file.size });
     }
-  });
 
-  xhr.addEventListener('load', () => {
+    progressText.textContent = 'Finishing up…';
+
+    // Step 3: record who shared them.
+    const completeRes = await fetch('/api/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: uploaderName, message, items })
+    });
+    if (!completeRes.ok) throw new Error((await completeRes.json().catch(() => ({}))).error || 'Could not save your memory.');
+
+    const count = files.length;
+    selectedFiles = [];
+    renderFileList();
+    document.getElementById('uploader-message').value = '';
+    setStatus(
+      count === 1
+        ? 'Thank you — your memory has been shared. ♥'
+        : `Thank you — ${count} memories have been shared. ♥`,
+      'success'
+    );
+    loadGallery();
+  } catch (err) {
+    setStatus(err.message || 'Upload failed — please check your connection and try again.', 'error');
+    submitBtn.disabled = false;
+  } finally {
     progressWrap.hidden = true;
     progressFill.style.width = '0%';
-    if (xhr.status >= 200 && xhr.status < 300) {
-      const count = selectedFiles.length;
-      selectedFiles = [];
-      renderFileList();
-      document.getElementById('uploader-message').value = '';
-      setStatus(
-        count === 1
-          ? 'Thank you — your memory has been shared. ♥'
-          : `Thank you — ${count} memories have been shared. ♥`,
-        'success'
-      );
-      loadGallery();
-    } else {
-      let message = 'Something went wrong. Please try again.';
-      try {
-        message = JSON.parse(xhr.responseText).error || message;
-      } catch {}
-      setStatus(message, 'error');
-      submitBtn.disabled = false;
-    }
-  });
-
-  xhr.addEventListener('error', () => {
-    progressWrap.hidden = true;
-    setStatus('Upload failed — please check your connection and try again.', 'error');
-    submitBtn.disabled = false;
-  });
-
-  xhr.send(formData);
+  }
 });
 
 // ---- Gallery ----
@@ -200,12 +241,12 @@ function loadGallery() {
           media = document.createElement('video');
           media.controls = true;
           media.preload = 'metadata';
-          media.src = `/media/${encodeURIComponent(entry.filename)}`;
+          media.src = entry.url;
         } else {
           media = document.createElement('img');
           media.loading = 'lazy';
           media.alt = entry.message || `Photo shared by ${entry.uploaderName}`;
-          media.src = `/media/${encodeURIComponent(entry.filename)}`;
+          media.src = entry.url;
         }
 
         const info = document.createElement('div');

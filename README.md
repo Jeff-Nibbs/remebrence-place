@@ -64,26 +64,48 @@ You'll get `memorial-media.zip` containing:
 
 ## Settings (environment variables)
 
-| Variable      | Default     | What it does                          |
-| ------------- | ----------- | ------------------------------------- |
-| `PORT`        | `3000`      | Port the site runs on                 |
-| `ADMIN_KEY`   | `change-me` | Key for the download-everything link  |
-| `MAX_FILE_MB` | `500`       | Max size per uploaded file, in MB     |
+| Variable               | Default     | What it does                                            |
+| ---------------------- | ----------- | ------------------------------------------------------- |
+| `PORT`                 | `3000`      | Port the site runs on                                   |
+| `ADMIN_KEY`            | `change-me` | Key for the download-everything link                    |
+| `MAX_FILE_MB`          | `500`       | Max size per uploaded file, in MB                       |
+| `R2_ACCOUNT_ID`        | —           | Your Cloudflare account ID                              |
+| `R2_ACCESS_KEY_ID`     | —           | R2 API token access key                                 |
+| `R2_SECRET_ACCESS_KEY` | —           | R2 API token secret                                     |
+| `R2_BUCKET`            | —           | Name of the R2 bucket to store media in                 |
+| `R2_PUBLIC_BASE_URL`   | —           | *(optional)* public URL if you make the bucket public   |
+
+See `.env.example` for a template.
 
 ## Where are the files stored?
 
-Uploads are saved in the `data/uploads/` folder on the server, with details in
-`data/metadata.json`. **Back up the `data/` folder** — it holds every memory
-your family shares.
+**With Cloudflare R2 configured** (the recommended setup), every photo and video
+is stored in your R2 bucket, and each contributor's name/message is stored
+alongside it as a small `meta/*.json` object. Nothing is kept on the web server's
+disk, so the site can run on cheap hosts that don't offer persistent storage.
 
-## Hosting it so family can visit
+**Without R2** (no `R2_*` variables set), it falls back to saving uploads in the
+local `data/` folder — handy for trying it out on your own computer.
 
-This app needs a host with **persistent disk storage** (uploads are saved to the
-server's filesystem). Good options:
+## Hosting it so family can visit (no self-hosting)
 
-- **[Railway](https://railway.app)** or **[Render](https://render.com)** — attach a persistent disk/volume, point it at `/app/data`.
-- **A small VPS** (DigitalOcean, Hetzner, Lightsail) — run `npm start` behind a reverse proxy.
-- **A spare computer at home** with a tunnel like [Cloudflare Tunnel](https://www.cloudflare.com/products/tunnel/) or [Tailscale Funnel](https://tailscale.com/kb/1223/funnel).
+Because media now lives in **Cloudflare R2**, this app no longer needs a server
+with persistent disk. Uploads go straight from the visitor's browser to R2, so
+even large videos never pass through (or fill up) the web server.
 
-Avoid serverless hosts (Vercel, Netlify, GitHub Pages) — they can't keep
-uploaded files between requests.
+**Recommended host: [Render](https://render.com)** — this repo includes a
+`render.yaml` blueprint, so deploying is a form you fill in once (no disk, no
+server to manage). Once this branch is on your repo's default branch, you can use:
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Jeff-Nibbs/remebrence-place)
+
+**See [`DEPLOY.md`](DEPLOY.md) for the full step-by-step guide.** In short:
+
+1. Create a Cloudflare R2 bucket and an API token (a few dollars a month; often
+   free for a small memorial site — R2 has no egress fees).
+2. Add a CORS rule to the bucket so browsers can upload to it.
+3. Deploy to Render with the button above and paste in the five values it asks
+   for. (Railway and Fly.io also work — see `DEPLOY.md`.)
+
+You still get the same one-click `download-all` zip for building the memorial
+video — the server streams it straight from R2.
