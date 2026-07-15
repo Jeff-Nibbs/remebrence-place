@@ -1,3 +1,16 @@
 node_modules/
 data/
 .env
+.DS_Store
+
+# Local media working copies — never committed
+r2-backup/
+memorial-media/
+
+# Local-only helper scripts for the printed album (kept off GitHub by choice)
+tools/r2-backup.js
+tools/make-zip.js
+
+# Local portrait-picking contact sheet
+contact-sheet.html
+contact-sheet/
