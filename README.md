@@ -1,111 +1,73 @@
 # Remembrance Place
 
-A gentle remembrance website for a loved one who has passed. Family and friends
-can upload their favorite **photos and videos**, along with their name and a
-memory. Everything is saved on the server so you can later download it all in
-one zip file — organized by contributor, with a manifest — to build a big
-memorial video collage.
+A quiet, static photo album in memory of **Honorina Carvalho DeSousa Arruda**
+(April 6, 1938 — July 6, 2026).
 
-## What's included
+The site is a single page: a portrait and her name, then every photo the family
+shared, in a justified grid that shuffles on each visit. Tapping a photo opens a
+full-screen viewer. There is nothing to sign up for and nothing to upload — the
+collection phase is over.
 
-- **Beautiful memorial landing page** — the loved one's name, dates, and a message to the family (all editable in `site.config.json`).
-- **Easy uploads** — drag & drop or tap to pick photos/videos, works on phones. Contributors add their name and an optional memory. Supports large video files (500 MB per file by default) with an upload progress bar.
-- **Memories gallery** — everything shared appears on the page for the whole family to enjoy.
-- **One-click export for the collage** — a private admin link downloads a zip of every file, sorted into folders by contributor, plus a `manifest.csv` / `manifest.json` listing who shared each file, when, and their message. Perfect for importing into a video editor.
+## How it's put together
 
-## Getting started
+- **The page** — `site/` is plain HTML, CSS, and JavaScript. No build step, no
+  framework, no external dependencies. What's in the folder is what ships.
+- **The photos** — stored in the Cloudflare R2 bucket `remembrance-media` and
+  served straight to the browser from its public `r2.dev` URL. The page loads
+  small `thumbs/` images for the grid and larger `display/` ones in the viewer.
+  The original uploads are never loaded by the page.
+- **`site/photos.json`** — the album's index: one entry per photo with its thumb
+  and display paths and the thumb's dimensions (which let the grid lay out rows
+  before any image loads). It deliberately carries no names, messages, or dates.
+- **Hosting** — Cloudflare Pages, deploying automatically from `main`. Free.
 
-You need [Node.js](https://nodejs.org) 18 or newer.
+## Everyday tasks
 
-```bash
-npm install
-npm start
-```
+**Change her name, dates, or the closing line.** Edit `site/index.html` directly —
+the text lives in the markup. (`site.config.json` is kept as the record of those
+values, but with no server there is nothing reading it at runtime.)
 
-Then open http://localhost:3000
+**Point the site at the photos.** `site/config.js` holds the public bucket URL.
+Get it from the Cloudflare dashboard → R2 → `remembrance-media` → Settings →
+Public access → r2.dev subdomain.
 
-## Personalize the site
-
-Edit `site.config.json` and change the name, dates, and messages:
-
-```json
-{
-  "siteTitle": "In Loving Memory",
-  "personName": "Grandma Rose",
-  "birthDate": "March 3, 1941",
-  "passedDate": "June 20, 2026",
-  "heroMessage": "Your message to the family...",
-  "uploadPrompt": "Share a photo, a video, a moment...",
-  "footerMessage": "Thank you for helping us remember."
-}
-```
-
-Restart the server after editing (or just refresh — the config is read on each request).
-
-## Downloading everything for the memorial video
-
-Set a private admin key when starting the server:
+**Preview locally.**
 
 ```bash
-ADMIN_KEY=my-secret-key npm start
+npm run dev      # serves site/ at http://localhost:3000
 ```
 
-Then visit (only share this link with whoever is making the video):
+**Rebuild the photo derivatives** (only needed if photos are added to R2):
 
+```bash
+npm install      # first time — pulls in sharp and the S3 client
+npm run media    # regenerates thumbs/ + display/ and rewrites site/photos.json
 ```
-http://your-site.com/api/download-all?key=my-secret-key
-```
 
-You'll get `memorial-media.zip` containing:
+The script is safe to re-run: it skips photos whose derivatives already exist,
+and it only ever writes to `thumbs/` and `display/`. Pass `--force` to rebuild
+everything, or `--limit N` to try a handful first. It needs `.env` (see
+`.env.example`) with the R2 credentials — that file is never committed.
 
-- One folder per contributor with all their photos/videos
-- `manifest.csv` — spreadsheet of every file: who shared it, when, and their message
-- `manifest.json` — the same data for any tools/scripts
+**Deploy.** Push to `main`. Cloudflare Pages builds with no build command and
+publishes the `site/` directory.
 
-## Settings (environment variables)
+## The printed album
 
-| Variable               | Default     | What it does                                            |
-| ---------------------- | ----------- | ------------------------------------------------------- |
-| `PORT`                 | `3000`      | Port the site runs on                                   |
-| `ADMIN_KEY`            | `change-me` | Key for the download-everything link                    |
-| `MAX_FILE_MB`          | `500`       | Max size per uploaded file, in MB                       |
-| `R2_ACCOUNT_ID`        | —           | Your Cloudflare account ID                              |
-| `R2_ACCESS_KEY_ID`     | —           | R2 API token access key                                 |
-| `R2_SECRET_ACCESS_KEY` | —           | R2 API token secret                                     |
-| `R2_BUCKET`            | —           | Name of the R2 bucket to store media in                 |
-| `R2_PUBLIC_BASE_URL`   | —           | *(optional)* public URL if you make the bucket public   |
+The written messages people sent were kept out of this site on purpose — they're
+for the printed album. They live in R2 under `meta/`, and in the verified local
+backup (`~/Desktop/memorial-media.zip`, made 2026-07-12).
 
-See `.env.example` for a template.
+Two local-only scripts support that work. They're kept out of git deliberately
+(see `.gitignore`); they read `.env` and expect to run from the repo root:
 
-## Where are the files stored?
+- `tools/r2-backup.js` — downloads the whole bucket to `r2-backup/`, verifying
+  every byte size.
+- `tools/make-zip.js` — organizes a local backup by contributor with a
+  `manifest.csv`/`manifest.json` of every message.
 
-**With Cloudflare R2 configured** (the recommended setup), every photo and video
-is stored in your R2 bucket, and each contributor's name/message is stored
-alongside it as a small `meta/*.json` object. Nothing is kept on the web server's
-disk, so the site can run on cheap hosts that don't offer persistent storage.
+## Ground rules
 
-**Without R2** (no `R2_*` variables set), it falls back to saving uploads in the
-local `data/` folder — handy for trying it out on your own computer.
-
-## Hosting it so family can visit (no self-hosting)
-
-Because media now lives in **Cloudflare R2**, this app no longer needs a server
-with persistent disk. Uploads go straight from the visitor's browser to R2, so
-even large videos never pass through (or fill up) the web server.
-
-**Recommended host: [Render](https://render.com)** — this repo includes a
-`render.yaml` blueprint, so deploying is a form you fill in once (no disk, no
-server to manage). Once this branch is on your repo's default branch, you can use:
-
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Jeff-Nibbs/remebrence-place)
-
-**See [`DEPLOY.md`](DEPLOY.md) for the full step-by-step guide.** In short:
-
-1. Create a Cloudflare R2 bucket and an API token (a few dollars a month; often
-   free for a small memorial site — R2 has no egress fees).
-2. Add a CORS rule to the bucket so browsers can upload to it.
-3. Deploy to Render with the button above and paste in the five values it asks
-   for. (Railway and Fly.io also work — see `DEPLOY.md`.)
-
-You still get the same one-click `download-all` zip for building the memorial
-video — the server streams it straight from R2.
+The originals under `uploads/` and the records under `meta/` are the only copies
+of what people sent. Nothing here modifies or deletes them; the media script adds
+derivatives and nothing else.
